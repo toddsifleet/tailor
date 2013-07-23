@@ -22,13 +22,13 @@ Usage
 -------
 
 To tail local files:
-  python tailor/main.py file_1_to_tail,file_2_to_tail
+    python tailor/main.py file_1_to_tail,file_2_to_tail
 
 To tail remote files:
-  python tailor/main.py file_1_to_tail,file_2_to_tail bob@barker.com
+    python tailor/main.py file_1_to_tail,file_2_to_tail bob@barker.com
 
 To tail remote files on multiple servers:
-  python tailor/main.py file_1_to_tail,file_2_to_tail bob@barker.com,drew@carey.com
+    python tailor/main.py file_1_to_tail,file_2_to_tail bob@barker.com,drew@carey.com
 
 Note
 -------
