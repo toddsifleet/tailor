@@ -4,7 +4,7 @@ import Queue
 import argparse
 from itertools import product
 
-class Tailer(threading.Thread):
+class Tailor(threading.Thread):
   def __init__(self, queue, server, file):
     threading.Thread.__init__(self)
     self.server = server
@@ -45,7 +45,7 @@ class Tailer(threading.Thread):
 
 def run(files, servers):
   queue = Queue.Queue()
-  trailers = [Tailer(queue, server, file) for server, file in product(servers, files)]
+  trailers = [Tailor(queue, server, file) for server, file in product(servers, files)]
   colors = { f: (91 + i) % 100 for i,f in enumerate(files) } if len(files)>1 else None
   tail(queue, colors, trailers)
 
@@ -82,6 +82,7 @@ def parse_args():
 
   servers = map(lambda x: x.strip(), args.servers.split(','))
   files = map(lambda x: x.strip(), args.files.split(','))
+  print files, servers
   return files, servers
 
 if __name__ == "__main__":
