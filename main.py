@@ -30,12 +30,17 @@ class Tailor(threading.Thread):
   def run(self):
     self.connect()
     line = self.tail_process.stdout.readline()
-    while self.running:
-      line = self.tail_process.stdout.readline()
-      self.put_in_queue(line.strip())
-    self.running = False
+    while line:
+      line = self.tail_process.stdout.readline().strip()
+      self.put_in_queue(line)
+    self.stop()
 
   def stop(self):
+    if not self.running:
+      return self
+
+    self.running = False
+
     print "Closing: %s:%s" % (self.server, self.file)
     try:
       self.tail_process.terminate()
@@ -55,7 +60,9 @@ def print_with_color(data, color):
 def tail(queue, colors, trailers):
   try:
     while True:
-      server, file, data = queue.get()
+      if queue.empty():
+        continue
+      server, file, data = queue.get_nowait()
       if colors:
         print_with_color(data + "\r", colors[file])
       else:
@@ -82,7 +89,6 @@ def parse_args():
 
   servers = map(lambda x: x.strip(), args.servers.split(','))
   files = map(lambda x: x.strip(), args.files.split(','))
-  print files, servers
   return files, servers
 
 if __name__ == "__main__":
