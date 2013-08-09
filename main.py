@@ -5,7 +5,8 @@ import argparse
 from itertools import product
 
 class Tailor(threading.Thread):
-  def __init__(self, queue, server, file):
+  def __init__(self, queue, server, file, lock):
+    self.lock = lock
     threading.Thread.__init__(self)
     self.server = server
     self.file = file
@@ -19,13 +20,21 @@ class Tailor(threading.Thread):
     self.queue.put((self.server, self.file, data))
 
   def connect(self):
-    command = ['ssh', '-t', self.server] if self.server not in ('localhost', 'local', '') else []
-    self.tail_process = Popen(
-      command + ['tail', '-f', self.file],
-      stdout = PIPE,
-      stdin = PIPE,
-      stderr = PIPE
-    )
+    #I was getting some weird results where one thread would block out another
+    #acquiring releasing the lock seems to work
+    self.lock.acquire()
+    try:
+      command = ['ssh', '-t', self.server] if self.server not in ('localhost', 'local', '') else []
+      self.tail_process = Popen(
+        command + ['tail', '-f', self.file],
+        stdout = PIPE,
+        stdin = PIPE,
+        stderr = PIPE
+      )
+    except:
+      self.stop()
+    finally:
+      self.lock.release()
 
   def run(self):
     self.connect()
@@ -50,8 +59,12 @@ class Tailor(threading.Thread):
 
 def run(files, servers):
   queue = Queue.Queue()
-  trailers = [Tailor(queue, server, file) for server, file in product(servers, files)]
+  lock = threading.Lock()
+  trailers = [Tailor(queue, server, file, lock) for server, file in product(servers, files)]
   colors = { f: (91 + i) % 100 for i,f in enumerate(files) } if len(files)>1 else None
+  if colors:
+    for f in files:
+      print_with_color(f, colors[f])
   tail(queue, colors, trailers)
 
 def print_with_color(data, color):
@@ -73,7 +86,7 @@ def tail(queue, colors, trailers):
       t.stop().join()
 
 def parse_args():
-  parser = argparse.ArgumentParser(description = 'Tail a file across multiple servers')
+  parser = argparse.ArgumentParser(description = 'Tail a file[s] across locally and/or across multiple servers')
   parser.add_argument('files',
     type = str,
     help = 'The path to the file you want to tail'
@@ -89,7 +102,7 @@ def parse_args():
 
   servers = map(lambda x: x.strip(), args.servers.split(','))
   files = map(lambda x: x.strip(), args.files.split(','))
-  return files, servers
+  return filter(bool, files), filter(bool, servers)
 
 if __name__ == "__main__":
   run(*parse_args())
