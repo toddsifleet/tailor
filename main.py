@@ -19,7 +19,7 @@ class Tailor(threading.Thread):
     self.queue.put((self.server, self.file, data))
 
   def connect(self):
-    command = ['ssh', '-t', self.server] if not self.server in ('localhost', 'local') else []
+    command = ['ssh', '-t', self.server] if self.server not in ('localhost', 'local', '') else []
     self.tail_process = Popen(
       command + ['tail', '-f', self.file],
       stdout = PIPE,
