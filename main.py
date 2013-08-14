@@ -73,9 +73,7 @@ def print_with_color(data, color):
 def tail(queue, colors, trailers):
   try:
     while True:
-      if queue.empty():
-        continue
-      server, file, data = queue.get_nowait()
+      server, file, data = queue.get()
       if colors:
         print_with_color(data + "\r", colors[file])
       else:
