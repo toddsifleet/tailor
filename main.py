@@ -65,16 +65,27 @@ class Tailor(threading.Thread):
       self._Thread__stop()
       return self
 
+def get_colors(files, servers):
+  alternates = files if len(files) > 1 else servers
+  colors = { f: (91 + i) % 100 for i, f in enumerate(alternates) }
+
+  if len(files) > 1:
+    return lambda f, _: colors[f]
+  elif len(servers) > 1:
+    return lambda _, s: colors[s]
+  else:
+    return None
+
 def run(args):
   queue = Queue.Queue()
   lock = threading.Lock()
   T = partial(Tailor, queue, lock)
   server_file_combos = product(args.servers, args.files)
   trailers = [T(server, file, args.match, args.ignore) for server, file in server_file_combos]
-  colors = { f: (91 + i) % 100 for i,f in enumerate(args.files) } if len(args.files)>1 else None
+  colors = get_colors(args.files, args.servers)
   if colors:
-    for f in args.files:
-      print_with_color(f, colors[f])
+    for s, f in server_file_combos:
+      print_with_color(f, colors(f, s))
   tail(queue, colors, trailers)
 
 def print_with_color(data, color):
@@ -88,7 +99,7 @@ def tail(queue, colors, trailers):
         continue
       server, file, data = queue.get()
       if colors:
-        print_with_color(data + "\r", colors[file])
+        print_with_color(data + "\r", colors(file, server))
       else:
         print data + "\r"
 
@@ -97,7 +108,7 @@ def tail(queue, colors, trailers):
       t.stop()
 
 def parse_args():
-  parser = argparse.ArgumentParser(description = 'Tail a file[s] across locally and/or across multiple servers')
+  parser = argparse.ArgumentParser(description = 'Tail a file[s] locally or across across multiple servers')
 
   parser.add_argument('-i', '--ignore',
     default = None,
