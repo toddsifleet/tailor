@@ -7,6 +7,13 @@ import re
 import time
 from functools import partial
 
+def print_with_color(data, color):
+    print "\033[%dm%s\033[0m" % (color, data)
+
+def split_strip_and_filter(input, delimeter = ','):
+    output = map(lambda x: x.strip(), input.split(delimeter))
+    return filter(bool, output)
+
 class Tailor(threading.Thread):
     daemon = True
     running = True
@@ -71,53 +78,85 @@ class Tailor(threading.Thread):
         finally:
             self._Thread__stop()
 
-def get_colors(files, servers):
-    alternates = files if len(files) > 1 else servers
-    colors = { f: (91 + i) % 100 for i, f in enumerate(alternates) }
+class TailManager(object):
+    match = None
+    ignore = None
+    def __init__(self, args):
+        self.queue = Queue.Queue()
+        self.lock = threading.Lock()
+        self._init_args(args)
+        self._set_colors()
 
-    if len(files) > 1:
-        return lambda f, _: colors[f]
-    elif len(servers) > 1:
-        return lambda _, s: colors[s]
-    else:
-        return None
+    def run(self):
+        try:
+            self._tail()
+        except KeyboardInterrupt:
+            for t in self.trailers:
+                t.stop()
 
-def initialize(args):
-    queue = Queue.Queue()
-    lock = threading.Lock()
-    T = partial(Tailor, queue, lock)
-    server_file_combos = product(args.servers, args.files)
-    trailers = [T(server, file, args.match, args.ignore) for server, file in server_file_combos]
-    colors = get_colors(args.files, args.servers)
-    if colors:
-        for s, f in server_file_combos:
-            print_with_color(f, colors(f, s))
-    return queue, colors, trailers
+    def _init_args(self, args):
+        self.servers = split_strip_and_filter(args.servers)
+        self.files = split_strip_and_filter(args.files)
+        self._set_rules(args)
 
-def print_with_color(data, color):
-    print "\033[%dm%s\033[0m" % (color, data)
+    def _set_rules(self, args):
+        if args.ignore is not None:
+            self.ignore = re.compile(args.ignore, re.I)
+        if args.match is not None:
+            self.match = re.compile(args.match, re.I)
 
-def tail(queue, colors, trailers):
-    while True:
-        if queue.empty():
-            time.sleep(.5)
-            continue
-        server, file, data = queue.get()
-        if colors:
-            print_with_color(data + "\r", colors(file, server))
+    def _print_open(self, server, file):
+        message = "Opening {file} on {server}".format(
+            file = file,
+            server = server
+        )
+        self._print(message, server, file)
+
+    def _init_tailor(self, server, file):
+        self._print_open(server, file)
+        return Tailor(
+            self.queue,
+            self.lock,
+            server,
+            file,
+            self.match,
+            self.ignore
+        )
+
+    def _tail(self):
+        self._start_trailers()
+        while True:
+            if self.queue.empty():
+                time.sleep(.5)
+            else:
+                self._print_line()
+
+    def _print_line(self):
+        server, file, data = self.queue.get()
+        self._print(data + "\r", server, file)
+
+    def _start_trailers(self):
+        server_file_combos = product(self.servers, self.files)
+        self.trailers = [self._init_tailor(s, f) for s,f in  server_file_combos]
+
+    def _print(self, message, server, file):
+        identifier = server if self.color_by == 'server' else file
+        print_with_color(message, self.colors[identifier])
+
+    def _set_colors(self):
+        if (len(self.servers) > 1):
+            self.color_by = 'server'
+            alternates = self.servers
         else:
-            print data + "\r"
+            self.color_by = 'file'
+            alternates = self.files
+        self.colors = { f: (91 + i) % 100 for i, f in enumerate(alternates) }
 
-def run(args):
-    queue, color, trailers = initialize(args)
-    try:
-      tail(queue, color, trailers)
-    except KeyboardInterrupt:
-        for t in trailers:
-            t.stop()
 
-def parse_args():
-    parser = argparse.ArgumentParser(description = 'Tail a file[s] locally or across across multiple servers')
+def get_args():
+    parser = argparse.ArgumentParser(
+        description = 'Tail a file[s] locally or across across multiple servers'
+    )
 
     parser.add_argument('-i', '--ignore',
         default = None,
@@ -141,15 +180,7 @@ def parse_args():
         help = 'A comma seperated list of servers to connect to.    local for files on your computer'
     )
 
-    args = parser.parse_args()
-
-    args.servers = filter(bool, map(lambda x: x.strip(), args.servers.split(',')))
-    args.files = filter(bool, map(lambda x: x.strip(), args.files.split(',')))
-    if args.ignore is not None:
-        args.ignore = re.compile(args.ignore, re.I)
-    if args.match is not None:
-        args.match = re.compile(args.match, re.I)
-    return args
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    run(parse_args())
+    TailManager(get_args()).run()
