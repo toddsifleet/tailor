@@ -1,4 +1,5 @@
 from subprocess import Popen, PIPE
+from signal import SIGINT, signal
 import threading
 import Queue
 import argparse
@@ -88,11 +89,14 @@ class TailManager(object):
         self._set_colors()
 
     def run(self):
-        try:
-            self._tail()
-        except KeyboardInterrupt:
-            for t in self.trailers:
-                t.stop()
+        signal(SIGINT, self._stop)
+        self.running = True
+        self._tail()
+
+    def _stop(self, *args):
+        self.running = False
+        for t in self.trailers:
+            t.stop()
 
     def _init_args(self, args):
         self.servers = split_strip_and_filter(args.servers)
@@ -125,7 +129,7 @@ class TailManager(object):
 
     def _tail(self):
         self._start_trailers()
-        while True:
+        while self.running:
             if self.queue.empty():
                 time.sleep(.5)
             else:
