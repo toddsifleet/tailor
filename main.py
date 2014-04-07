@@ -28,6 +28,24 @@ class Tailor(threading.Thread):
         self.ignore = ignore
         self.start()
 
+    def run(self):
+        self._connect()
+        for line in self._lines():
+            self._process_line(line)
+        self.stop()
+
+    def stop(self):
+        if self.running:
+            print "Closing: %s:%s" % (self.server, self.file)
+            self._stop()
+        return self
+
+    def _lines(self):
+        line = self.tail_process.stdout.readline()
+        while self.running and line:
+            yield line
+            line = self.tail_process.stdout.readline()
+
     def _is_local(self):
         return self.server not in ('localhost', 'local', '')
 
@@ -43,37 +61,37 @@ class Tailor(threading.Thread):
             stderr = PIPE
         )
 
-    def put_in_queue(self, data):
-        if self.ignore and re.search(self.ignore, data):
-            return
-        if not self.match or re.search(self.match, data):
-            self.queue.put((self.server, self.file, data))
+    def _ignore(self, line):
+        return self.ignore and re.search(self.ignore, line)
 
-    def connect(self):
+    def _match(self, line):
+        if self._ignore(line):
+            return False
+        elif self.match:
+            return re.search(self.match, line)
+        else:
+            return True
+
+    def _process_line(self, line):
+        line = line.strip()
+        if self._match(line):
+            self._put_in_queue(line)
+
+    def _put_in_queue(self, line):
+        self.queue.put((self.server, self.file, line))
+
+    def _connect(self):
         self.lock.acquire()
         try:
             self._start_tail_process()
-        except:
-            self.stop()
         finally:
             self.lock.release()
 
-    def run(self):
-        self.connect()
-        line = self.tail_process.stdout.readline()
-        while line:
-            line = self.tail_process.stdout.readline().strip()
-            self.put_in_queue(line)
-        self.stop()
-
-    def stop(self):
-        if self.running:
-            print "Closing: %s:%s" % (self.server, self.file)
-            self.stop_tailing_process()
-        return self
-
-    def stop_tailing_process(self):
+    def _stop(self):
         self.running = False
+        self._stop_tailing_process()
+
+    def _stop_tailing_process(self):
         try:
             self.tail_process.terminate()
         finally:
@@ -136,8 +154,8 @@ class TailManager(object):
                 self._print_line()
 
     def _print_line(self):
-        server, file, data = self.queue.get()
-        self._print(data + "\r", server, file)
+        server, file, line = self.queue.get()
+        self._print(line + "\r", server, file)
 
     def _start_trailers(self):
         server_file_combos = product(self.servers, self.files)
